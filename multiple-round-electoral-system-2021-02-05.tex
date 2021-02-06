@@ -1,0 +1,347 @@
+\documentclass{article}
+\usepackage{physics, float, dsfont, listings, amsthm, amssymb, setspace, bold-extra}
+\setlength{\parindent}{0 em}
+\lstset{basicstyle = \ttfamily}
+\usepackage[backend = biber]{biblatex}
+\restylefloat{table}
+\usepackage{color, colortbl}
+\addbibresource{sources.bib}
+\newcommand{\N}{\mathds{N}}
+\newcommand{\super}{\textsuperscript}
+\DeclareMathOperator{\cmr}{CMR}
+\setlength\parindent{0 em}
+%\newcommand{\PF}{}
+\definecolor{headc}{rgb}{0.7,0.7,0.7}
+\definecolor{advc}{rgb}{0.6,0.8,0.6}
+
+\author{Kit Scriven}
+\title{A Multiple-Round Electoral System passing the Mutual Majority Criterion: Cumulative Majority Runoff Voting}
+%\subtitle{"Cumulative Majority Runoff Voting"}
+\begin{document}
+\maketitle
+\section{Notation and Terminology}
+For the purposes of this paper, $s >_p t$ means that in the individual ordering $p$, $s$ is ranked above $t$, $C_1(c, C)$ is the number of voters who ranked candidate $c$ first out of all candidates in the set $C$, and $P_C$ the set of all possible finite sets of individual ordered preferences of a set of candidates $C$.
+
+All algorithms will be using Python 3, the \texttt{pandas} and \texttt{numpy} packages, and will accept the input in the form of a \texttt{DataFrame} of ballots of the following form:
+\begin{lstlisting}
+	1	2	3	4	...
+0	x	x	x	x	...
+1	x	x	x	x	...
+2	x	x	x	x	...
+3	x	x	x	x	...
+.	.	.	.	.	...
+.	.	.	.	.	...
+.	.	.	.	.	...
+\end{lstlisting}
+where each row is a ballot, there are as many columns as candidates, and the $k$\super{th} column represents the $k$\super{th} choice of the voter\footnote{This is not recommended for those seeking to actually implement these voting methods. This is for explanatory purposes only.}.
+
+Some predefined functions are \texttt{countTopChoice} which returns the list of candidates, in order of number of top-choice votes:
+\begin{lstlisting}[language = Python]
+def countTopChoice(ballots):
+    ballots_x = ballots.copy()
+    return ballots_x.groupby('1').count()
+    .sort_values('2', ascending = False).index.values
+\end{lstlisting}
+\texttt{topChoiceVotes}, which counts the number of top-choice votes for each candidate in descending order:
+\begin{lstlisting}[language = Python]
+def topChoiceVotes(ballots):
+    ballots_x = ballots.copy()
+    return ballots_x.groupby('1').count()
+    .sort_values('2', ascending = False).loc[:,'2'].values
+\end{lstlisting}
+\texttt{advance}, which transfers the votes to their top choice among a predetermined list 
+\begin{lstlisting}[language = Python]
+def advance(ballot_list, adv):
+    ballots = ballot_list.copy()
+    while len(set(countTopChoice(ballots))-set(adv)) > 0:
+        ballots = adv1(ballots, adv)
+    return ballots
+\end{lstlisting}
+which requires the helper function \texttt{adv1}\footnote{Full disclosure, \texttt{adv1} was originally supposed to do what \texttt{advance} does, but it does not, hence the inelegant solution.}:
+\begin{lstlisting}[language = Python]
+def adv1(ballot_list, adv):
+    """transfers the ballots to top preference between those in adv"""
+    ballots = ballot_list.copy()
+    allcands = countTopChoice(ballots)
+    elim = list(set(allcands) - set(adv))
+    for j in elim:
+        for i in ballots.index.values:
+            if ballots.loc[i].values[0] == j:
+                ballots.loc[i] = moveOver(ballots.loc[i].values)
+    return ballots
+\end{lstlisting}
+
+\section{Background}
+
+The plurality, or `First-Past-The-Post' electoral system, is widely used throughout the world, including in most U.S. and all U.K. general legislative elections. The winner is determined by perhaps the simplest method, whoever has the most first choice votes wins.
+
+This can be stated as follows: given a finite set of individual ordered preferences $P$, and set of candidates $C$, the winner $w$ is the element of $C$ such that
+$$\forall x \in C \quad C_1(w,C) \geq C_1(x,C).$$
+
+An algorithm is presented below:
+\begin{lstlisting}[language = Python]
+def FPTP(ballots):
+    ballots_x = ballots.copy()
+    ranks = countTopChoice(ballots_x)
+    return ranks[0]
+\end{lstlisting}
+
+There are a wide number of problems with it, including the spoiler effect, which is that the entrance of a candidate can cause the candidate with similar views to lose an election. It can be demonstrated with the famous (or infamous) example of the 2000 United States Presidential election in Florida which decided the presidency. The result is as follows:
+
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline\rowcolor{headc}
+Candidate & Party & Votes & Percentage & Result\\
+\hline\rowcolor{advc}
+George Bush & Republican & $2,912,790$ & $48.847\%$ & Won \\
+\hline
+Al Gore & Democratic & $2,912,253$ & $48.838\%$ & Lost \\
+\hline 
+Ralph Nader & Green & $97,488$ & $1.64\%$ & Lost \\
+\hline
+\end{tabular}
+\label{2000fptp}
+\end{table}
+
+If, as polling suggests\footnote{https://www.nytimes.com/2004/02/24/us/2004-campaign-independent-relax-nader-advises-alarmed-democrats-but-2000-math.html} that if Nader had not run, Green voters would have split 45-27-28 Gore-Bush-Wouldn't have voted, the result might have looked something like this:
+
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline\rowcolor{headc}
+Candidate & Party & Votes & Percentage & Result\\
+\hline\rowcolor{advc}
+Al Gore & Democratic & $2,956,122$ & $49.8\%$ & Won \\
+\hline
+George Bush & Republican & $2,939,111$ & $49.5\%$ & Lost \\
+\hline
+\end{tabular}
+\end{table}
+
+Outcomes like these have led some states, towns, and nations to adopt what is referred to as a two-round system, which would resolve many two party systems like this.
+
+The two round system can be described as follows: for a finite set of individual ordered preferences $P$, and set of candidates $C$, the winner $w$ is the element of $C$ such that
+$$ w\in A = \qty{a\in C  :  \abs{\qty{c\in C: C_1(c, C) > C_1(a, C)} \leq 1}}, $$
+that is, $w$ is in the set of candidates for whom there are is at most one candidate with a greater number of first choice votes, or $w$ is in the top two in terms of first choice votes, and
+$$ \forall a \in A \; a \neq w \; \abs{\qty{p\in P : w >_p a}} > \abs{\qty{p\in P : a >_p w}}, $$
+that is, $w$ is preferred over $a$.
+
+An algorithm is presented below:
+\begin{lstlisting}[language = Python]
+def twoRound(ballots):
+    ballots_x = ballots.copy()
+    secondround = countTopChoice(ballots_x)[:2]
+    secondround_ballots = advance(ballots_x, secondround)
+    ranks = countTopChoice(secondround_ballots)
+    return ranks[0]
+\end{lstlisting}
+
+One of the issues of the commonly used two-round system is its failing of the mutual majority criterion. This criterion specifies that given a finite set of individual ordered preferences $P$, a social welfare function $F$, a set of candidates $C$ and a subset of those candidates $S$, that 
+\[ \abs{\qty{p \in P : \forall s \in S \;\; \forall t \in C\setminus S \quad s >_p t}} > \frac{1}{2}\abs{P} \implies F(P)\in S \]
+that is, that if there is a majority block of voters which all prefer candidates in one subset of candidates to all other candidates, that the winner will be from that block. Generally, this takes the form of a political party. For a concrete example, consider the 2016 election for State Treasurer of Washington\footnote{This election was conducted as a non-partisan blanket primary, which is functionally identical to a two-round system except that the top-two candidates always go to a runoff, even if a candidate receives a majority of the vote. The distinction is unimportant in this example.}: the primary results are as follows:
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline\rowcolor{headc}
+Candidate & Party & Votes & Percentage & Result\\
+\hline\rowcolor{advc}
+Duane Davidson & Republican & $322,374$ & $25.09\%$ & Advanced \\
+\hline \rowcolor{advc}
+Michael Waite & Republican & $299,766$ & $23.33\%$ & Advanced \\
+\hline 
+Marko Liias & Democratic & $261,633$ & $20.36\%$ & Eliminated \\
+\hline 
+John Paul Comerford & Democratic & $230,904$ & $17.97\%$ & Eliminated\\
+\hline 
+Alec Fisken & Democratic & $170,117$ & $13.24\%$ & Eliminated\\
+\hline
+\end{tabular}
+\label{2016tr}
+\end{table}
+This primary result guaranteed a Republican victory. However, observe that the party-line vote is as follows:
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|}
+\hline\rowcolor{headc}
+Party & Percentage & Result\\
+\hline\rowcolor{advc}
+Republican & $48.42\%$ & Two Advanced\\
+\hline
+Democratic & $51.57\%$ & All Eliminated\\
+\hline
+\end{tabular}\end{table}
+If we assume that all Democratic voters would have voted for a Democrat in the Runoff, then this result is an instance of the system failing the mutual majority criterion.
+
+The exhaustive ballot is an example of a system which passes this criterion. In an exhaustive ballot election, the candidate with the fewest votes is eliminated until one candidate reaches a majority, or there are no candidates left. %PROOF
+
+\section{The Cumulative-Majority Runoff System}
+I propose the following system: the top candidates whose collective vote share have a majority are repeatedly eliminated until one candidate has a majority. This is called the Cumulative-Majority Runoff method, or CMR.
+
+\subsection{Definition}
+
+First, let $R_k (k\in \N): P_C \to \mathcal{P}(C) $ take in a finite list of ordered preferences given a candidate set, and return a subset of this candidate list as follows:
+$$ R_k(P) = \qty{a\in C  :  \abs{\qty{c\in C: C_1(c, C) > C_1(a, C)} \leq k-1}} $$
+This set is the set of the top $k$ candidates in terms of first choice vote. Note that $A$ in the two round system is $R_2(P)$.
+
+Let $V: \mathcal{P}(C) \to \N$ such that 
+$$V(S) = \sum_{\forall s \in S} C_1(s, S),$$
+that is, number of people who voted for any of the people in that set.
+
+Now let $R$ be defined as follows:
+$$R(P, C) = R_k(P) : V(R_k(P))>\frac{1}{2}\abs{P},\; V(R_{k-1}(P))<\frac{1}{2}\abs{P},$$
+that is, the smallest set of candidates which collectively has a majority.
+
+Then, define recursively $R^1(P,C) = R(P,C); R^n(P, C) = R(R^{n-1}(P, C), C).$ The winner is thus, $$W(P, C) = t: t\in R^k(P,C), \abs{R^k(P,C)} = 1, \abs{R^{k-1}(P,C)} > 1.$$
+
+\subsection{Algorithm}
+
+An algorithm using \texttt{pandas} and \texttt{numpy} in python is as follows:
+\begin{lstlisting}[language=Python]
+def R(ballots):
+    ballots_ = ballots.copy()
+    cs = np.cumsum(topChoiceVotes(ballots_))
+    maj = cs[-1]/2
+    last = np.where(cs > maj)[0][0]
+    return countTopChoice(ballots_)[:last+1]
+
+def CMR(ballots):
+    ballots_ = ballots.copy()
+    while True:
+        if len(R(ballots_)) <= 1:
+            return R(ballots_)[0]
+        else:
+            print(ballots_)
+            ballots_ = advance(ballots_, R(ballots_))
+\end{lstlisting}
+
+\subsection{Example}
+
+If we were to use the example of the 2016 Washington State Treasurer election following this system, it would proceed as follows:
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline\rowcolor{headc}
+Candidate & Party & Votes & Percentage & Result\\
+\hline\rowcolor{advc}
+Duane Davidson & Republican & $322,374$ & $25.09\%$ & Advanced \\
+\hline \rowcolor{advc}
+Michael Waite & Republican & $299,766$ & $23.33\%$ & Advanced \\
+\hline \rowcolor{advc}
+Marko Liias & Democratic & $261,633$ & $20.36\%$ & Advanced \\
+\hline 
+John Paul Comerford & Democratic & $230,904$ & $17.97\%$ & Eliminated\\
+\hline 
+Alec Fisken & Democratic & $170,117$ & $13.24\%$ & Eliminated\\
+\hline
+\end{tabular}
+\end{table}
+Since $25.09\% + 23.33\% + 20.36\% = 68.78\% > 50\% > 48.42\% = 25.09\% + 23.33\%$, the top three candidates advance to the runoff. Assuming that the Democrats all vote in a block, with all Comerford voters and all Fisken voters preferring Liias to both Republicans, and no Republican voters change their minds the second round results are as follows:
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline\rowcolor{headc}
+Candidate & Party & Votes & Percentage & Result\\
+\hline \rowcolor{advc}
+Marko Liias & Democratic & $662,654$ & $51.57\%$ & Won \\
+\hline
+Duane Davidson & Republican & $322,374$ & $25.09\%$ & Lost \\
+\hline
+Michael Waite & Republican & $299,766$ & $23.33\%$ & Lost \\
+\hline
+\end{tabular}
+\end{table}
+The winner, Liias, is from the majority block. As will be shown, this is always the case.
+\section{Properties}
+\subsection{Majority Criterion}
+The CMR method satisfies the majority criterion trivially: if a candidate has majority first-round support, they win automatically.
+\subsection{Majority-Loser Criterion}
+Like the two-round system, it satisfies the majority loser criterion: if there is a candidate $l$ whom a majority of voters who ranked last, then either $l$ will not make it to the last round, or they will be beaten in the last round, since the other candidate in the last round $o$ will a majority of voters for whom $o$ is preferred to $l$.
+\subsection{Mutual Majority Criterion}
+This is the key advantage of the CMR method over the two-round method. 
+
+\begin{proof}
+Let $\cmr(P)$ denote the CMR social welfare function, and $R(P)$ as in 3.1.
+
+\textbf{Lemma.}
+\[\abs{\qty{p \in P : \forall s \in S \;\; \forall t \in C\setminus S \quad s >_p t}} > \frac{1}{2}\abs{P} \implies \exists\; x \in R(P) \;\; x\in S\]
+(i.e., the next round will always contain a member of the majority faction.)
+\begin{proof}
+Suppose that this is not the case; i.e.
+\[\abs{\qty{p \in P : \forall s \in S \;\; \forall t \in C\setminus S \quad s >_p t}} > \frac{1}{2}\abs{P} \quad \land \quad \forall\; x \in R(P) \;\; x\notin S\]
+That is, within the smallest set which have between them a majority of first place votes, none are part of the majority faction.
+
+Let $\qty{p \in P : \forall s \in S \;\; \forall t \in C\setminus S \quad s >_p t} = M.$
+\[\abs{M} > \frac{1}{2}\abs{P} \implies \sum_{\forall m \in M} C_1(m) > \frac{1}{2}\abs{P}\] %PROOF?
+\[\forall\; x \in R(P) \;\; x\notin S \implies \sum_{\forall x\in R(P)} C_1(x) > \frac{1}{2}\abs{P}\] 
+However, we know that
+\[ R(P) \cap M = \varnothing \]\[
+\implies \sum_{\forall p\in P} C_1(p) \geq \sum_{\forall x\in R(P)} C_1(x) + \sum_{\forall m \in M} C_1(m) > \frac{1}{2}\abs{P} + \frac{1}{2}\abs{P} = \abs{P} \]
+which means that the number of first instance votes for $P$ is strictly greater than the number of total votes, hence a contradiction, so 
+\[\abs{\qty{p \in P : \forall s \in S \;\; \forall t \in C\setminus S \quad s >_p t}} > \frac{1}{2}\abs{P} \implies \exists\; x \in R(P) \;\; x\in S.\]
+\end{proof}
+Since the winner must be a member of a subsequent round, by induction, the Mutual Majority Criterion is met. %PROOF
+\end{proof}
+\subsection{Condorcet Criterion}
+As with all runoff voting systems, the Condorcet Criterion is not met. For situations with three candidates, the Cumulative Majority Runoff method produces identical results to the two-round method, as does the exhaustive ballot. A counter example is as follows:
+
+Consider the situation with the following preferences:
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|c|c|}
+\hline\rowcolor{headc}
+Number & $1$\super{st} Preference & $2$\super{nd} Preference & $3$\super{rd} Preference\\
+\hline
+$4$ & A & C & B \\ \hline
+$3$ & B & C & A \\ \hline
+$2$ & C & A & B \\ \hline
+\end{tabular}
+\end{table}
+Comparing A versus C,
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|}
+\hline\rowcolor{headc}
+Candidate & Votes \\
+\hline
+A & 4 \\ \hline \rowcolor{advc}
+C & 5 \\ \hline
+\end{tabular}
+\end{table}
+and B versus C,
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|}
+\hline\rowcolor{headc}
+Candidate & Votes \\
+\hline
+B & 3 \\ \hline \rowcolor{advc}
+C & 6 \\ \hline
+\end{tabular}
+\end{table}
+C is clearly a Condorcet winner. For good measure, A versus B is
+\begin{table}[H]\centering
+\begin{tabular}{|c|c|}
+\hline\rowcolor{headc}
+Candidate & Votes \\
+\hline\rowcolor{advc}
+A & 6 \\ \hline 
+B & 3 \\ \hline
+\end{tabular}
+\end{table}
+meaning the global preference is C$>$A$>$B. However, C is eliminated in the first round of a runoff system, so it cannot win. Hence, it fails the Condorcet criterion.
+\subsection{Upper Bound on Number of Rounds}
+An upper bound for the number of rounds is $\log_2(|C|)$, as a maximum of the ceiling of half of the candidates will proceed to the following round, or $|R(P,C)| < \lceil\frac{1}{2} |C|\rceil$. 
+
+\begin{proof}
+Consider the rank ordering of candidates by top preference vote as follows
+\[C = \qty{c_1, \dots, c_n}\]
+where $C_1(c_1) > C_1(c_2) > \dots > C_1(c_n)$. Then consider $R(P,C) = \qty{c_1, \dots, c_k}$, where $k$ is some integer less than $n$. Suppose that $k > \lceil\frac{n}{2}\rceil$. This means that
+\[\sum_{i\leq k} C_1(c_i) > \frac{|P|}{2} > \sum_{i\leq k-1} C_1(c_i)\]
+However, \[\frac{|P|}{2} > \sum_{i\leq k-1} C_1(c_i) \implies \sum_{i\geq k} C_1(c_i)  > \frac{|P|}{2}\]
+and since $k > \lceil\frac{n}{2}\rceil, n-k < n-\lceil\frac{n}{2}\rceil \leq \lfloor\frac{n}{2}\rfloor < k.$ However, this implies that there is a smaller set that has a majority, a contradiction, so $k \geq \lceil\frac{n}{2}\rceil$.
+\end{proof}
+
+\subsection{Minimum Number of Candidates Advanced Needed to Satisfy Mutual Majority Criterion}
+An advantage of the CMR method is that it minimizes the number candidates advanced to the next round needed to satisfy the Mutual Majority criterion. 
+\begin{proof}
+Since it satisfies the criterion, it is certainly at least the minimum number advanced. A counterexample suffices to demonstrate that one fewer advanced may violate the criterion, which is conveniently provided by the example in the 2016 Washington State Treasurer election. Since the CMR method would have advanced the top three candidates, the two advanced by the Two-Round method produced a result in violation of the Mutual Majority Criterion.
+\end{proof}
+\subsection{Minimum Number of Rounds Needed to Satisfy Mutual Majority Criterion}
+The proof follows directly from the previous property.
+
+\section{Use Cases}
+There are two methods by which to conduct the election, one is to conduct the election in multiple rounds, with each person voting for one candidate, and the other is to conduct the election in one ranked choice ballot. For the ranked-choice method, there seems to me to be little advantage to conduct the election by this method as opposed to simply using Instant Runoff. For the multiple-round method, there is a clear advantage as opposed to conducting the election by the multiple-round counterpart to Instant Runoff, the exhaustive ballot. Since the exhaustive ballot may take up to as many rounds as candidates, while the upper bound for CMR has an upper bound of the base 2 logarithm of the number of candidates. However, for an election with a very large number of candidates, this upper bound can conceivably still be difficult to manage.
+
+\end{document}
